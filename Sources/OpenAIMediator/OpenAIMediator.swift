@@ -12,20 +12,42 @@ public struct OpenAIMediator {
     init() {
     }
 
-    static func completions(prompt: String, model: String, temperature: Int = 0) {
+    /*
+     curl https://api.openai.com/v1/completions \
+       -H "Content-Type: application/json" \
+       -H "Authorization: Bearer $OPENAI_API_KEY" \
+       -d '{
+       "model": "text-davinci-003",
+       "prompt": "Generate JSON file with 3 German words (nouns with gender or verbs) from software engineering field.\n\n{\n    \"words\": [\n        {\n            \"word\": \"Softwareentwicklung\",\n            \"gender\": \"Feminine\"\n        },\n        {\n            \"word\": \"Programmierung\",\n            \"gender\": \"Feminine\"\n        },\n        {\n            \"word\": \"Debuggen\",\n            \"gender\": \"Neuter\"\n        }\n    ]\n}\n",
+       "temperature": 0.7,
+       "max_tokens": 256,
+       "top_p": 1,
+       "frequency_penalty": 0,
+       "presence_penalty": 0
+     }'
+     */
+    public static func completions(prompt: String, model: String) async throws -> CompletionResponse {
+        var request = try Endpoint.completions.request()
+        let body = CompletionRequest(prompt: prompt, model: model, maxTokens: 128, temperature: 0.7, topP: 1, n: 1, stream: false, logprobs: nil, stop: nil)
+        request.httpBody = try JSONEncoder().encode(body)
 
+        return try await exe(CompletionResponse.self, request: request)
     }
 
     public static func listModels() async throws -> ListModelsResponse {
         let request = try Endpoint.listModels.request()
-        let (data, response) = try await URLSession.shared.data(for: request)
+        return try await exe(ListModelsResponse.self, request: request)
+    }
 
+    private static func exe<T>(_ type: T.Type, request: URLRequest) async throws -> T where T : Decodable {
+        let (data, response) = try await URLSession.shared.data(for: request)
         let httpResponse = response as? HTTPURLResponse
         if httpResponse?.statusCode != 200 {
             let responseString = String(decoding: data, as: UTF8.self)
             throw OpenAIMediatorError.responseError(response, responseString)
         }
-        return try JSONDecoder().decode(ListModelsResponse.self, from: data)
+        print("-> OUTPUT:", String(decoding: data, as: UTF8.self))
+        return try JSONDecoder().decode(type.self, from: data)
     }
 }
 
@@ -51,7 +73,7 @@ enum Endpoint {
         }
         result.httpMethod = httpMethod
         result.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
+        result.addValue("application/json", forHTTPHeaderField: "Content-Type")
         return result
     }
 
